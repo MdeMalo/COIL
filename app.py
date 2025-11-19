@@ -33,6 +33,8 @@ from flask import Flask, render_template, request, jsonify, send_file
 import pandas as pd
 import json
 
+import matplotlib.pyplot as plt
+
 fecha_str = datetime.now().strftime("%d%m%y_%H%M%S")
 
 def cargar_modelo(ruta_modelo: str):
@@ -141,6 +143,44 @@ def construir_app():
         df_encoded = df_encoded.reindex(columns=columnas, fill_value=0)
 
         return df_encoded
+    
+    def generar_grafica(datos):
+        """Genera una gráfica de barras con los valores de la fisura y la devuelve como imagen."""
+        fig, ax = plt.subplots(figsize=(5, 3))
+
+        etiquetas = [
+            "Profundidad (mm)",
+            "Longitud (cm)",
+            "Temp (°C)",
+            "Humedad (%)",
+            "Edad (hrs)",
+            "Viento (km/h)"
+        ]
+
+        valores = [
+            float(datos["profundidad_mm"]),
+            float(datos["longitud_cm"]),
+            float(datos["temp_ambiente_C"]),
+            float(datos["humedad_relativa"]),
+            float(datos["edad_concreto_horas"]),
+            float(datos["exposicion_viento_kmh"])
+        ]
+
+        ax.bar(etiquetas, valores, color="#4A90E2")
+        ax.set_ylabel("Valor")
+        ax.set_title("Valores ingresados de la fisura")
+        plt.xticks(rotation=30, ha="right")
+
+        # Guardar en buffer
+        grafica_buf = io.BytesIO()
+        plt.tight_layout()
+        plt.savefig(grafica_buf, format="PNG")
+        grafica_buf.seek(0)
+        plt.close()
+
+        return grafica_buf
+
+    
     def generar_reporte_pdf(datos: dict, df_modelo: pd.DataFrame, etiqueta: str):
         """Genera un PDF y devuelve un buffer BytesIO listo para enviar.
 
@@ -213,6 +253,39 @@ def construir_app():
         c.drawString(50, y_actual, texto_exp[:110])
         y_actual -= 12
         c.drawString(50, y_actual, texto_exp[110:220])
+        
+        # ===== Gráfica en el PDF =====
+        y_actual -= 25
+        grafica_buf = generar_grafica(datos)
+        grafica_image = ImageReader(grafica_buf)
+        
+        c.drawString(40, y_actual, "Gráfica de datos ingresados:")
+        y_actual -= 145
+        c.drawImage(grafica_image, 40, y_actual, width=250, height=150, preserveAspectRatio=True, mask='auto')
+
+
+        # Agregamos la confianza (porcentaje de probabilidad de la clase predicha)
+        confianza = None
+        if hasattr(modelo, "predict_proba"):
+            proba = modelo.predict_proba(df_modelo)[0]
+            pred_local = modelo.predict(df_modelo)[0]
+            try:
+                clases_local = list(getattr(modelo, "classes_", []))
+                idx_local = clases_local.index(pred_local)
+            except Exception:
+                idx_local = int(pred_local) if isinstance(pred_local, (int, bool)) else 0
+            confianza = round(proba[idx_local] * 100, 2)
+        y_actual -= 18
+        if confianza is not None:
+            c.setFont("Helvetica-Bold", 12)
+            c.drawString(40, y_actual, "Confianza del modelo:")
+            y_actual -= 15
+            c.setFont("Helvetica", 10)
+            c.drawString(50, y_actual, f"{confianza}%")
+        else:
+            c.setFont("Helvetica", 10)
+            c.drawString(40, y_actual, "Confianza del modelo no disponible (predict_proba ausente).")
+
 
         # ===== Gráfica SHAP =====
         # Calculamos SHAP para esta fila
@@ -338,17 +411,41 @@ def construir_app():
                 return pred
         else:
             return str(pred) """
+    
+    def obtener_confianza(df):
+        """Devuelve el porcentaje de confianza de la clase predicha."""
+        if not hasattr(modelo, "predict_proba"):
+            return None
+        proba = modelo.predict_proba(df)[0]
+        pred = modelo.predict(df)[0]
+        try:
+            clases = list(getattr(modelo, "classes_", []))
+            idx = clases.index(pred)
+        except Exception:
+            # Asumir orden estándar si no se puede mapear
+            idx = int(pred) if isinstance(pred, (int, bool)) else 0
+        confianza = proba[idx]
+        return round(confianza * 100, 2)
 
     @app.route('/predecir', methods=['POST'])
     def predecir():
         """Procesa el formulario y muestra el resultado de la predicción."""
         datos = request.form.to_dict()
+        confianza = None
         try:
             df = procesar_entrada(datos)
             resultado = realizar_prediccion(df)
+            confianza = obtener_confianza(df)
         except Exception as e:
             resultado = f"Error al procesar la predicción: {e}"
-        return render_template('index.html', categorias=categorias_patron, resultado=resultado, valores=datos)
+        return render_template(
+            'index.html',
+            categorias=categorias_patron,
+            resultado=resultado,
+            confianza=confianza,
+            valores=datos
+        )
+
 
     @app.route('/api/prediccion', methods=['POST'])
     def api_prediccion():
@@ -359,6 +456,8 @@ def construir_app():
         try:
             df = procesar_entrada(datos)
             resultado = realizar_prediccion(df)
+            confianza = obtener_confianza(df)
+            return
         except Exception as e:
             return jsonify({'error': str(e)}), 500
         return jsonify({'prediccion': resultado})

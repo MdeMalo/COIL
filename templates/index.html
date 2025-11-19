@@ -8,10 +8,8 @@
     {% if url_for('static', filename='styles.css') %}
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
     {% endif %}
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" 
-      rel="stylesheet" 
-      integrity="sha384-T3c6CoIi6uLrA9TneNEoa7RxnatzjcPc95VUBSzR8M9GZ9E7Jv5q5Q0p6a5Q7l5+" 
-      crossorigin="anonymous">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet"
+        integrity="sha384-T3c6CoIi6uLrA9TneNEoa7RxnatzjcPc95VUBSzR8M9GZ9E7Jv5q5Q0p6a5Q7l5+" crossorigin="anonymous">
 
     <style>
         body {
@@ -139,7 +137,8 @@
             <button type="submit" formaction="{{ url_for('predecir') }}" class="btn btn-primary w-50">
                 Predecir fisura
             </button>
-            <button type="submit" formaction="{{ url_for('reporte_pdf') }}" formtarget="_blank" class="btn btn-secondary w-50">
+            <button type="submit" formaction="{{ url_for('reporte_pdf') }}" formtarget="_blank"
+                class="btn btn-secondary w-50">
                 Descargar reporte PDF
             </button>
         </div>
@@ -150,6 +149,11 @@
     <div class="resultado{% if 'Error' in resultado %} error{% endif %}">
         {{ resultado }}
     </div>
+    {% if confianza %}
+    <div class="alert alert-info mt-2">
+        <b>Confianza del modelo:</b> {{ confianza }}%
+    </div>
+    {% endif %}
     {% endif %}
 </body>
 

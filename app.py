@@ -17,12 +17,23 @@ Requisitos:
     con los nombres de columnas generadas durante el entrenamiento
     tras aplicar one‑hot encoding a los datos originales.
 """
+import io
+from datetime import datetime
+
+import matplotlib.pyplot as plt
+import shap
+import qrcode
+from reportlab.pdfgen import canvas
+from reportlab.lib.pagesizes import letter
+from reportlab.lib.utils import ImageReader
 
 from pathlib import Path
 import pickle
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, send_file
 import pandas as pd
+import json
 
+fecha_str = datetime.now().strftime("%d%m%y_%H%M%S")
 
 def cargar_modelo(ruta_modelo: str):
     """Carga el modelo entrenado desde un archivo pickle.
@@ -79,6 +90,8 @@ def construir_app():
     ruta_base = Path(__file__).resolve().parent
     modelo = cargar_modelo(ruta_base / 'modelo_fisuras.pkl')
     columnas = cargar_columnas(ruta_base / 'columnas.pkl')
+    
+    explainer = shap.TreeExplainer(modelo)
 
     # Extraer las categorías de patron_fisura a partir de las columnas
     # Se identifican columnas que comienzan con el prefijo 'patron_fisura_'
@@ -88,7 +101,7 @@ def construir_app():
     @app.route('/', methods=['GET'])
     def index():
         """Muestra el formulario principal para introducir datos de la fisura."""
-        return render_template('index.html', categorias=categorias_patron)
+        return render_template('index.html', categorias=categorias_patron, valores={})
 
     def procesar_entrada(datos: dict) -> pd.DataFrame:
         """Convierte un diccionario de entrada en un DataFrame listo para el modelo.
@@ -128,6 +141,164 @@ def construir_app():
         df_encoded = df_encoded.reindex(columns=columnas, fill_value=0)
 
         return df_encoded
+    def generar_reporte_pdf(datos: dict, df_modelo: pd.DataFrame, etiqueta: str):
+        """Genera un PDF y devuelve un buffer BytesIO listo para enviar.
+
+        El helper no es una ruta de Flask (no lleva decorador).
+        Incluye datos de entrada, la predicción, explicación breve,
+        fecha, logo (si existe), gráfica SHAP y código QR.
+        """
+
+        buffer = io.BytesIO()
+        c = canvas.Canvas(buffer, pagesize=letter)
+        width, height = letter
+
+        # Fecha
+        fecha_str = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+
+        # Logo (si existe static/logo.png)
+        logo_path = ruta_base / "static" / "logo.png"
+        y_actual = height - 60
+        if logo_path.exists():
+            try:
+                c.drawImage(str(logo_path), 40, y_actual - 40, width=80, height=40, preserveAspectRatio=True, mask='auto')
+            except Exception:
+                pass
+
+        # Título
+        c.setFont("Helvetica-Bold", 16)
+        c.drawString(140, y_actual - 10, "Reporte de clasificación de fisura")
+        c.setFont("Helvetica", 10)
+        c.drawString(140, y_actual - 25, f"Fecha y hora: {fecha_str}")
+
+        # Datos de entrada
+        y_actual -= 80
+        c.setFont("Helvetica-Bold", 12)
+        c.drawString(40, y_actual, "Datos de entrada:")
+        y_actual -= 15
+        c.setFont("Helvetica", 10)
+
+        for k, v in datos.items():
+            c.drawString(50, y_actual, f"{k}: {v}")
+            y_actual -= 12
+            if y_actual < 200:  # evitar que se encime con las gráficas
+                break
+
+        # Predicción y explicación
+        y_actual -= 10
+        c.setFont("Helvetica-Bold", 12)
+        c.drawString(40, y_actual, "Predicción del modelo:")
+        y_actual -= 15
+        c.setFont("Helvetica", 11)
+        c.drawString(50, y_actual, etiqueta)
+
+        y_actual -= 25
+        c.setFont("Helvetica-Bold", 12)
+        c.drawString(40, y_actual, "Explicación breve:")
+        y_actual -= 15
+        c.setFont("Helvetica", 9)
+
+        if "HELADA" in etiqueta.upper():
+            texto_exp = (
+                "La fisura se clasifica como PLÁSTICA POR HELADA TEMPRANA. "
+                "Los valores de temperatura baja, edad temprana del concreto y la ausencia de "
+                "ensanchamiento en la columna indican un fenómeno de congelación."
+            )
+        else:
+            texto_exp = (
+                "La fisura se clasifica como ESTRUCTURAL POR COMPRESIÓN SIMPLE. "
+                "La profundidad, longitud y la posible presencia de ensanchamiento en la columna "
+                "sugieren un problema de carga y aplastamiento del concreto."
+            )
+        c.drawString(50, y_actual, texto_exp[:110])
+        y_actual -= 12
+        c.drawString(50, y_actual, texto_exp[110:220])
+
+        # ===== Gráfica SHAP =====
+        # Calculamos SHAP para esta fila
+        shap_values = explainer.shap_values(df_modelo)
+
+        plt.figure(figsize=(4, 3))
+        shap.summary_plot(shap_values, df_modelo, plot_type="bar", show=False)
+        plt.tight_layout()
+
+        shap_buf = io.BytesIO()
+        plt.savefig(shap_buf, format="png")
+        plt.close()
+        shap_buf.seek(0)
+
+        shap_img = ImageReader(shap_buf)
+        c.drawString(40, 210, "Importancia de características (SHAP):")
+        c.drawImage(shap_img, 40, 80, width=260, height=120, preserveAspectRatio=True, mask='auto')
+
+        # ===== Código QR =====
+
+        # Construir payload con datos ingresados y metadatos
+        # Construir texto legible con los datos de la fisura
+        campos_legibles = {
+            "Profundidad (mm)": datos.get("profundidad_mm"),
+            "Longitud (cm)": datos.get("longitud_cm"),
+            "Temp ambiente (°C)": datos.get("temp_ambiente_C"),
+            "Humedad relativa (%)": datos.get("humedad_relativa"),
+            "Columna ensanchada (0/1)": datos.get("columna_ensanchada"),
+            "Edad concreto (h)": datos.get("edad_concreto_horas"),
+            "Exposición viento (km/h)": datos.get("exposicion_viento_kmh"),
+            "Patrón fisura": datos.get("patron_fisura"),
+        }
+
+        lines = [
+            "REPORTE FISURA",
+            f"Fecha: {fecha_str}",
+            f"Predicción: {etiqueta}",
+            "----- Datos -----"
+        ]
+        for k, v in campos_legibles.items():
+            lines.append(f"{k}: {v}")
+
+        # También incluir versión JSON para posible parsing
+        qr_payload = {
+            "timestamp": fecha_str,
+            "prediccion": etiqueta,
+            "datos": campos_legibles
+        }
+
+        qr_texto = "\n".join(lines) + "\n----- JSON -----\n" + json.dumps(qr_payload, ensure_ascii=False)
+
+        qr_img = qrcode.make(qr_texto)
+        qr_buf = io.BytesIO()
+        qr_img.save(qr_buf, format="PNG")
+        qr_buf.seek(0)
+
+        qr_image = ImageReader(qr_buf)
+        c.drawString(340, 210, "QR de referencia:")
+        c.drawImage(qr_image, 340, 90, width=140, height=140, preserveAspectRatio=True, mask='auto')
+
+        c.showPage()
+        c.save()
+        buffer.seek(0)
+        return buffer
+
+    @app.route('/reporte_pdf', methods=['POST'])
+    def reporte_pdf():
+        """
+        Genera y devuelve un PDF con los datos de la fisura y la predicción.
+        Usa los mismos campos del formulario que /predecir.
+        """
+        datos = request.form.to_dict()
+
+        try:
+            df = procesar_entrada(datos)
+            etiqueta = realizar_prediccion(df)
+            pdf_buffer = generar_reporte_pdf(datos, df, etiqueta)
+        except Exception as e:
+            return f"Error al generar el reporte: {e}", 500
+
+        return send_file(
+            pdf_buffer,
+            as_attachment=True,
+            download_name=f"reporte_fisura_{fecha_str}.pdf",
+            mimetype="application/pdf"
+        )
 
     def realizar_prediccion(df: pd.DataFrame) -> str:
         """Realiza la predicción utilizando el modelo cargado y devuelve la etiqueta.
@@ -200,4 +371,3 @@ if __name__ == '__main__':
     aplicacion = construir_app()
     aplicacion.run(host='0.0.0.0', port=5000, debug=False)
     
-print(cargar_columnas("columnas.pkl"))

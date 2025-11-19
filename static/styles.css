@@ -1,0 +1,131 @@
+/* Diseño mejorado para la aplicación de fisuras */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
+
+:root{
+    --bg: #f5f7fb;
+    --card: #ffffff;
+    --muted: #6b7280;
+    --text: #111827;
+    --primary: #2563eb; /* azul */
+    --primary-600: #1d4ed8;
+    --success: #16a34a;
+    --danger: #dc2626;
+    --glass: rgba(255,255,255,0.6);
+    --radius: 10px;
+    --container-max: 1100px;
+}
+
+*{box-sizing: border-box}
+html,body{height:100%}
+body{
+    margin:0;
+    font-family: 'Inter', system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+    background: linear-gradient(180deg,var(--bg),#eef2ff 80%);
+    color:var(--text);
+    -webkit-font-smoothing:antialiased;
+}
+
+.site-header{
+    background: var(--card);
+    border-bottom: 1px solid #e6e9ef;
+    box-shadow: 0 2px 8px rgba(16,24,40,0.03);
+}
+.container{
+    max-width: var(--container-max);
+    margin: 0 auto;
+    padding: 1rem 1.25rem;
+}
+
+.brand{
+    display:flex;align-items:center;gap:.75rem;padding:.75rem 0;
+}
+.brand-logo{
+    width:42px;height:42px;border-radius:8px;background:var(--primary);display:inline-flex;align-items:center;justify-content:center;color:white;font-weight:700;
+}
+.brand-title{font-size:1.125rem;font-weight:600}
+
+.top-row{display:flex;align-items:center;justify-content:space-between;gap:1rem}
+
+main{padding:1.5rem 0}
+
+.card{
+    background:var(--card);
+    border-radius:var(--radius);
+    padding:1.25rem;
+    box-shadow:0 6px 18px rgba(15,23,42,0.06);
+    border:1px solid rgba(15,23,42,0.03);
+}
+
+.grid{
+    display:grid;gap:1rem;
+}
+@media(min-width:800px){
+    .grid-2{grid-template-columns:1fr 420px}
+    .form-grid-2{grid-template-columns:1fr 1fr}
+}
+@media(max-width:799px){
+    .form-grid-2{grid-template-columns:1fr}
+}
+
+h1,h2{margin:0 0 .5rem 0}
+h1{font-size:1.4rem}
+
+form{background:transparent;padding:0}
+.campo{margin-bottom:.75rem}
+label{display:block;margin-bottom:.35rem;color:var(--muted);font-size:.95rem}
+input[type="number"], input[type="text"], select, textarea{
+    width:100%;padding:.65rem .75rem;border-radius:8px;border:1px solid #e6e9ef;background:transparent;color:var(--text);
+    transition:all .15s ease;outline:none
+}
+input:focus, select:focus, textarea:focus{box-shadow:0 6px 20px rgba(37,99,235,0.08);border-color:var(--primary-600)}
+
+.row{display:flex;gap:1rem;align-items:center}
+.spacer{flex:1}
+
+.btn{
+    display:inline-block;padding:.6rem .9rem;border-radius:8px;border:none;background:var(--primary);color:#fff;font-weight:600;cursor:pointer;transition:transform .08s ease,box-shadow .08s ease;text-decoration:none;text-align:center;
+}
+.btn:active{transform:translateY(1px)}
+.btn.ghost{background:transparent;color:var(--primary);border:1px solid rgba(37,99,235,0.12)}
+.btn.secondary{background:#6b7280}
+
+.resultado, .error{
+    margin-top:1rem;padding:1rem;border-radius:8px;font-weight:600
+}
+.resultado{background:linear-gradient(180deg, rgba(16,185,129,0.08), rgba(16,185,129,0.03));border:1px solid rgba(16,185,129,0.15);color:var(--success)}
+.error{background:linear-gradient(180deg, rgba(239,68,68,0.06), rgba(239,68,68,0.02));border:1px solid rgba(239,68,68,0.12);color:var(--danger)}
+
+/* Tabla */
+table{width:100%;border-collapse:collapse;background:transparent}
+th,td{padding:.6rem .75rem;text-align:left;border-bottom:1px solid #f1f5f9;font-size:.95rem}
+th{background:transparent;color:var(--muted);font-weight:600}
+tr:hover td{background:rgba(2,6,23,0.02)}
+
+/* Formularios avanzados */
+.field-help{font-size:.85rem;color:var(--muted);margin-top:.35rem}
+
+.footer{color:var(--muted);font-size:.9rem;padding:1rem 0;text-align:center}
+
+/* small utilities */
+.mt-1{margin-top:.5rem}.mt-2{margin-top:1rem}
+.mb-1{margin-bottom:.5rem}
+
+/* mejora visual para inputs numéricos y selects */
+input[type=number]::-webkit-outer-spin-button, input[type=number]::-webkit-inner-spin-button{opacity:.6}
+
+/* layout principal cuando se usa container + card */
+.page{
+    max-width:var(--container-max);margin:1.25rem auto;padding:0 1rem
+}
+
+.hero{display:flex;align-items:center;gap:1rem;margin-bottom:1rem}
+.logo-small{width:48px;height:48px;border-radius:8px;background:linear-gradient(135deg,var(--primary),#7c3aed);display:inline-flex;align-items:center;justify-content:center;color:white;font-weight:700}
+
+/* accesibilidad: foco claro */
+:focus{outline:2px solid rgba(37,99,235,0.15);outline-offset:2px}
+
+/* pequeñas animaciones */
+.fade-in{animation:fadeIn .28s ease both}
+@keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+
+/* fin de estilos */

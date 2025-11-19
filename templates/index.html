@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Clasificador de fisuras</title>
+    {% if url_for('static', filename='styles.css') %}
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    {% endif %}
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 700px;
+            margin: 0 auto;
+            padding: 1em;
+            background-color: #f7f7f7;
+        }
+        h1 {
+            text-align: center;
+            color: #333;
+        }
+        form {
+            background: #fff;
+            padding: 1em 2em;
+            border-radius: 5px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        }
+        .campo {
+            margin-bottom: 1em;
+        }
+        label {
+            display: block;
+            margin-bottom: 0.3em;
+            color: #555;
+        }
+        input[type="number"], input[type="text"], select {
+            width: 100%;
+            padding: 0.5em;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+        .boton {
+            display: block;
+            width: 100%;
+            padding: 0.7em;
+            background-color: #007BFF;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            font-size: 1em;
+            cursor: pointer;
+        }
+        .boton:hover {
+            background-color: #0056b3;
+        }
+        .resultado {
+            margin-top: 1em;
+            padding: 1em;
+            background: #e9ffe9;
+            border: 1px solid #b2ffb2;
+            border-radius: 4px;
+            color: #155724;
+        }
+        .error {
+            background: #ffe9e9;
+            border-color: #ffb2b2;
+            color: #721c24;
+        }
+    </style>
+</head>
+<body>
+    <h1>Clasificador de fisuras</h1>
+    <form action="{{ url_for('predecir') }}" method="post">
+        <div class="campo">
+            <label for="profundidad_mm">Profundidad (mm):</label>
+            <input type="number" step="any" name="profundidad_mm" id="profundidad_mm" required value="{{ valores.profundidad_mm if valores and valores.profundidad_mm }}">
+        </div>
+        <div class="campo">
+            <label for="longitud_cm">Longitud (cm):</label>
+            <input type="number" step="any" name="longitud_cm" id="longitud_cm" required value="{{ valores.longitud_cm if valores and valores.longitud_cm }}">
+        </div>
+        <div class="campo">
+            <label for="temp_ambiente_C">Temperatura ambiente (°C):</label>
+            <input type="number" step="any" name="temp_ambiente_C" id="temp_ambiente_C" required value="{{ valores.temp_ambiente_C if valores and valores.temp_ambiente_C }}">
+        </div>
+        <div class="campo">
+            <label for="humedad_relativa">Humedad relativa (%):</label>
+            <input type="number" step="any" name="humedad_relativa" id="humedad_relativa" required value="{{ valores.humedad_relativa if valores and valores.humedad_relativa }}">
+        </div>
+        <div class="campo">
+            <label for="patron_fisura">Patrón de fisura:</label>
+            <select name="patron_fisura" id="patron_fisura" required>
+                <option value="" disabled {% if not valores or not valores.patron_fisura %}selected{% endif %}>Seleccione un patrón</option>
+                {% for cat in categorias %}
+                <option value="{{ cat }}" {% if valores and valores.patron_fisura == cat %}selected{% endif %}>{{ cat }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="campo">
+            <label for="columna_ensanchada">Columna ensanchada (0 = No, 1 = Sí):</label>
+            <input type="number" name="columna_ensanchada" id="columna_ensanchada" min="0" max="1" required value="{{ valores.columna_ensanchada if valores and valores.columna_ensanchada }}">
+        </div>
+        <div class="campo">
+            <label for="edad_concreto_horas">Edad del concreto (horas):</label>
+            <input type="number" step="any" name="edad_concreto_horas" id="edad_concreto_horas" required value="{{ valores.edad_concreto_horas if valores and valores.edad_concreto_horas }}">
+        </div>
+        <div class="campo">
+            <label for="exposicion_viento_kmh">Exposición al viento (km/h):</label>
+            <input type="number" step="any" name="exposicion_viento_kmh" id="exposicion_viento_kmh" required value="{{ valores.exposicion_viento_kmh if valores and valores.exposicion_viento_kmh }}">
+        </div>
+        <button type="submit" class="boton">Predecir fisura</button>
+    </form>
+
+    {% if resultado %}
+    <div class="resultado{% if 'Error' in resultado %} error{% endif %}">
+        {{ resultado }}
+    </div>
+    {% endif %}
+</body>
+</html>

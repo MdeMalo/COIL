@@ -2,117 +2,188 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
     <title>Dashboard</title>
-    <style>
-        body { font-family: Arial; padding: 20px; background:#f7f7f7 }
-        .card { background:white; padding:15px; border-radius:6px; margin-bottom:12px }
-        .btn { display:inline-block; padding:8px 12px; background:#007bff; color:white; text-decoration:none; border-radius:4px }
-    </style>
+    <link rel="stylesheet" href="/static/styles.css">
 </head>
 <body>
-    <a class="btn" href="/">← Volver</a>
-    <h1>Dashboard</h1>
-
-    <style>
-        /* Limitar alturas de las gráficas para evitar páginas muy largas */
-        .chart-container { width: 100%; max-width: 900px; height: 340px; margin: 0 auto; }
-        @media (max-width: 768px) { .chart-container { height: 260px; } }
-        canvas { width: 100% !important; height: 100% !important; }
-    </style>
-
-    <div class="card">
-        <h3>Conteo por tipo</h3>
-        <div class="chart-container">
-            <canvas id="chartConteos"></canvas>
+    <header class="site-header">
+        <div class="container top-row">
+            <div class="brand">
+                <div class="brand-logo">CF</div>
+                <div>
+                    <div class="brand-title">Dashboard - Fisuras</div>
+                    <div class="field-help">Visión general de registros y métricas</div>
+                </div>
+            </div>
+            <div class="row">
+                <a class="btn ghost" href="/">← Volver</a>
+                <button id="btnRefresh" class="btn" title="Recargar">Recargar</button>
+                <a id="btnExport" class="btn ghost" href="/export_excel" title="Descargar Excel">Exportar</a>
+            </div>
         </div>
-    </div>
+    </header>
 
-    <div class="card">
-        <h3>Historial temporal</h3>
-        <div class="chart-container">
-            <canvas id="chartSerie"></canvas>
+    <main class="page">
+        <div class="container">
+            <div class="grid grid-2">
+                <div>
+                    <div class="card fade-in">
+                        <div class="top-row" style="align-items:center">
+                            <h2 style="margin:0">Conteo por tipo</h2>
+                            <div class="spacer"></div>
+                            <div id="loadingConteos" style="display:none">Cargando…</div>
+                        </div>
+                        <div style="display:flex;gap:1rem;align-items:center;flex-wrap:wrap">
+                            <div style="flex:1;min-width:220px;max-width:420px">
+                                <canvas id="chartConteos"></canvas>
+                            </div>
+                            <div style="flex:1;min-width:180px">
+                                <p class="field-help">Distribución de resultados normalizados.</p>
+                                <div id="legendConteos"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card fade-in mt-2">
+                        <div class="top-row">
+                            <h2 style="margin:0">Historial temporal</h2>
+                            <div class="spacer"></div>
+                            <div id="loadingSerie" style="display:none">Cargando…</div>
+                        </div>
+                        <div style="height:320px;margin-top:.75rem">
+                            <canvas id="chartSerie"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <aside>
+                    <div class="card fade-in">
+                        <h3 style="margin-top:0">Promedios de parámetros</h3>
+                        <table id="tablaPromedios">
+                            <tr><th>Profundidad (mm)</th><td id="p_profundidad">-</td></tr>
+                            <tr><th>Longitud (cm)</th><td id="p_longitud">-</td></tr>
+                            <tr><th>Temp ambiente (°C)</th><td id="p_temp">-</td></tr>
+                            <tr><th>Humedad relativa (%)</th><td id="p_humedad">-</td></tr>
+                            <tr><th>Edad concreto (hrs)</th><td id="p_edad">-</td></tr>
+                            <tr><th>Exposición viento (km/h)</th><td id="p_viento">-</td></tr>
+                        </table>
+                        <div class="mt-2">
+                            <button id="btnRefreshSmall" class="btn ghost">Actualizar</button>
+                        </div>
+                    </div>
+
+                    <div class="card fade-in mt-2">
+                        <h3 style="margin-top:0">Notas</h3>
+                        <p class="field-help">Si los conteos parecen incorrectos, verifica los filtros en el historial o actualiza la base de datos.</p>
+                    </div>
+                </aside>
+            </div>
         </div>
-    </div>
+    </main>
 
-    <div class="card">
-        <h3>Promedios de parámetros</h3>
-        <table id="tablaPromedios">
-            <tr><th>Profundidad (mm)</th><td id="p_profundidad">-</td></tr>
-            <tr><th>Longitud (cm)</th><td id="p_longitud">-</td></tr>
-            <tr><th>Temp ambiente (°C)</th><td id="p_temp">-</td></tr>
-            <tr><th>Humedad relativa (%)</th><td id="p_humedad">-</td></tr>
-            <tr><th>Edad concreto (hrs)</th><td id="p_edad">-</td></tr>
-            <tr><th>Exposición viento (km/h)</th><td id="p_viento">-</td></tr>
-        </table>
-    </div>
-
-    <!-- Chart.js CDN -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <script>
-        async function fetchData() {
-            const resp = await fetch('/api/dashboard_data');
-            if (!resp.ok) {
-                console.error('Error fetching dashboard data', resp.statusText);
-                return null;
-            }
-            return await resp.json();
+        let chartConteos = null;
+        let chartSerie = null;
+
+        const palette = ['#2563eb','#fb923c','#ef4444','#10b981','#8b5cf6','#06b6d4','#f59e0b'];
+
+        function showLoading(id, show){
+            const el = document.getElementById(id);
+            if(!el) return;
+            el.style.display = show ? 'inline-block' : 'none';
         }
 
-        function renderConteos(conteos) {
+        async function fetchData(){
+            try{
+                showLoading('loadingConteos', true);
+                showLoading('loadingSerie', true);
+                const resp = await fetch('/api/dashboard_data');
+                if(!resp.ok) throw new Error(resp.statusText || 'Error en la petición');
+                const data = await resp.json();
+                showLoading('loadingConteos', false);
+                showLoading('loadingSerie', false);
+                return data;
+            }catch(err){
+                showLoading('loadingConteos', false);
+                showLoading('loadingSerie', false);
+                console.error('Dashboard fetch error', err);
+                showError(err.message || err);
+                return null;
+            }
+        }
+
+        function showError(msg){
+            // simple alert for now; could show inline banner later
+            alert('Error al cargar dashboard: ' + msg);
+        }
+
+        function createLegend(containerId, labels, colors){
+            const el = document.getElementById(containerId);
+            if(!el) return;
+            el.innerHTML = '';
+            labels.forEach((l,i) => {
+                const row = document.createElement('div');
+                row.style.display = 'flex'; row.style.alignItems='center'; row.style.gap='8px'; row.style.marginBottom = '6px';
+                const sw = document.createElement('span');
+                sw.style.width = '14px'; sw.style.height = '14px'; sw.style.borderRadius='3px'; sw.style.background = colors[i % colors.length];
+                const txt = document.createElement('div'); txt.textContent = l; txt.style.fontSize = '0.95rem'; txt.style.color = 'var(--muted)';
+                row.appendChild(sw); row.appendChild(txt); el.appendChild(row);
+            });
+        }
+
+        function renderConteos(conteos){
             const labels = conteos.map(c => c.resultado);
             const data = conteos.map(c => c.cnt);
             const ctx = document.getElementById('chartConteos').getContext('2d');
-            new Chart(ctx, {
-                type: 'bar',
-                data: {
-                    labels: labels,
-                    datasets: [{
-                        label: 'Cantidad',
-                        data: data,
-                        backgroundColor: '#4A90E2'
-                    }]
-                },
-                options: { responsive: true, maintainAspectRatio: false }
+            if(chartConteos) chartConteos.destroy();
+            chartConteos = new Chart(ctx, {
+                type: 'doughnut',
+                data:{ labels: labels, datasets:[{ data: data, backgroundColor: labels.map((_,i)=>palette[i%palette.length]) }]},
+                options:{
+                    responsive:true, maintainAspectRatio:false, aspectRatio:1.1,
+                    plugins:{ legend:{ display:false }, tooltip:{ callbacks:{ label: function(ctx){ return ctx.label + ': ' + ctx.formattedValue; }}}}
+                }
             });
+            createLegend('legendConteos', labels, labels.map((_,i)=>palette[i%palette.length]));
         }
 
-        function renderSerie(serie) {
+        function renderSerie(serie){
             const labels = serie.map(s => s.fecha);
             const data = serie.map(s => s.cnt);
             const ctx = document.getElementById('chartSerie').getContext('2d');
-            new Chart(ctx, {
+            if(chartSerie) chartSerie.destroy();
+            chartSerie = new Chart(ctx, {
                 type: 'line',
-                data: {
-                    labels: labels,
-                    datasets: [{
-                        label: 'Registros por fecha',
-                        data: data,
-                        borderColor: '#d9534f',
-                        tension: 0.2,
-                        fill: false
-                    }]
-                },
-                options: { responsive: true, maintainAspectRatio: false }
+                data: { labels, datasets:[{ label:'Registros', data, borderColor: palette[2], backgroundColor: 'rgba(239,68,68,0.06)', tension:0.25, fill:true, pointRadius:3 }]},
+                options: { responsive:true, maintainAspectRatio:false, scales:{ x:{ ticks:{ maxRotation:0 } }, y:{ beginAtZero:true } }, plugins:{ legend:{ display:false } } }
             });
         }
 
-        function renderPromedios(promedios) {
-            document.getElementById('p_profundidad').textContent = promedios.profundidad_mm ?? '-';
-            document.getElementById('p_longitud').textContent = promedios.longitud_cm ?? '-';
-            document.getElementById('p_temp').textContent = promedios.temp_ambiente_C ?? '-';
-            document.getElementById('p_humedad').textContent = promedios.humedad_relativa ?? '-';
-            document.getElementById('p_edad').textContent = promedios.edad_concreto_horas ?? '-';
-            document.getElementById('p_viento').textContent = promedios.exposicion_viento_kmh ?? '-';
+        function renderPromedios(promedios){
+            document.getElementById('p_profundidad').textContent = (promedios.profundidad_mm ?? '-');
+            document.getElementById('p_longitud').textContent = (promedios.longitud_cm ?? '-');
+            document.getElementById('p_temp').textContent = (promedios.temp_ambiente_C ?? '-');
+            document.getElementById('p_humedad').textContent = (promedios.humedad_relativa ?? '-');
+            document.getElementById('p_edad').textContent = (promedios.edad_concreto_horas ?? '-');
+            document.getElementById('p_viento').textContent = (promedios.exposicion_viento_kmh ?? '-');
         }
 
-        (async () => {
+        async function loadAndRender(){
             const data = await fetchData();
-            if (!data) return;
-            if (data.conteos) renderConteos(data.conteos);
-            if (data.serie) renderSerie(data.serie);
-            if (data.promedios) renderPromedios(data.promedios);
-        })();
-    </script>
+            if(!data) return;
+            if(data.conteos) renderConteos(data.conteos);
+            if(data.serie) renderSerie(data.serie);
+            if(data.promedios) renderPromedios(data.promedios);
+        }
 
+        document.getElementById('btnRefresh')?.addEventListener('click', loadAndRender);
+        document.getElementById('btnRefreshSmall')?.addEventListener('click', loadAndRender);
+
+        // load on start
+        loadAndRender();
+    </script>
 </body>
 </html>

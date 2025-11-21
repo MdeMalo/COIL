@@ -428,6 +428,35 @@ def construir_app():
             idx = int(pred) if isinstance(pred, (int, bool)) else 0
         confianza = proba[idx]
         return round(confianza * 100, 2)
+    
+    @app.route('/historial', methods=['GET'])
+    def historial():
+        """Muestra una tabla HTML con todos los registros guardados en SQL Server."""
+        try:
+            conn = get_connection()
+            cursor = conn.cursor()
+
+            cursor.execute("""
+                SELECT 
+                    id, fecha_generacion, 
+                    profundidad_mm, longitud_cm, temp_ambiente_C,
+                    humedad_relativa, patron_fisura, columna_ensanchada,
+                    edad_concreto_horas, exposicion_viento_kmh,
+                    resultado, confianza, ruta_pdf
+                FROM Reportes
+                ORDER BY id DESC
+            """)
+
+            registros = cursor.fetchall()
+            columnas = [column[0] for column in cursor.description]
+
+            cursor.close()
+            conn.close()
+
+        except Exception as e:
+            return f"Error al obtener historial: {e}"
+
+        return render_template("historial.html", columnas=columnas, registros=registros)
 
     @app.route('/predecir', methods=['POST'])
     def predecir():
@@ -463,7 +492,7 @@ def construir_app():
                 float(datos["edad_concreto_horas"]),
                 float(datos["exposicion_viento_kmh"]),
                 str(resultado),
-                float(confianza)  # 🔥 ESTA LÍNEA ES LA IMPORTANTE
+                float(confianza)
             ))
 
 

@@ -36,6 +36,31 @@ Nota: en Windows, `pyodbc` puede requerir instalar el driver ODBC de SQL Server 
 - La conexión a la base de datos SQL Server la gestiona `Prueba_Conexion.get_connection()` en tu código. Asegúrate de que esa función esté configurada con el DSN/host/usuario/contraseña correctos.
 - Archivos del modelo: `modelo_fisuras.pkl` y `columnas.pkl` deben existir y ser legibles por el proceso (mismo formato `pickle`).
 
+## Base de datos de ejemplo (SQLite)
+Si quieres incluir una base de datos de ejemplo en el repositorio (útil para demos o pruebas locales), hay dos enfoques recomendados:
+
+- 1) Script de inicialización (recomendado): se incluye un script `scripts/init_db.py` que crea `data/sample.db` con la tabla `Reportes` y filas de ejemplo. Ejecuta:
+
+```powershell
+python scripts\init_db.py
+```
+
+Después de ejecutar, el archivo `data/sample.db` contendrá datos de ejemplo. Para usarlo en desarrollo puedes apuntar temporalmente la aplicación al helper SQLite.
+
+- 2) Exportar un dump SQL / archivo .db: puedes añadir el archivo binario `data/sample.db` al repo si quieres compartir directamente la base de datos. Ten en cuenta que no es recomendable subir bases de datos de producción o con datos sensibles.
+
+### Usar el helper SQLite local
+Se incluye `Prueba_Conexion_sqlite.py` que exporta `get_connection()` apuntando a `data/sample.db`. Para desarrollar con la base SQLite, cambia en `app.py` la línea de import (temporalmente):
+
+```python
+# from Prueba_Conexion import get_connection
+from Prueba_Conexion_sqlite import get_connection
+```
+
+Esto evita tocar tu configuración de SQL Server y permite que `/historial`, `/dashboard` y `/export_excel` usen la DB de ejemplo.
+
+> Seguridad: no subas credenciales ni bases de datos con datos reales al repositorio público. Usa datos sintéticos o anonimiza antes de compartir.
+
 ## Ejecutar la aplicación (desarrollo)
 En PowerShell (desde la carpeta del proyecto):
 

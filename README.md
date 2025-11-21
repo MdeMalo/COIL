@@ -108,16 +108,13 @@ Visita `/dashboard`. Si las gráficas no muestran datos:
 - `shap` puede fallar si no está instalado o si la versión no es compatible; es opcional para la explicación en PDFs.
 
 ## Mantener dependencias
-Genera un `requirements.txt` con:
 
-```powershell
-pip freeze > requirements.txt
-```
+- Instalar en otra máquina/entorno:
+    ```bash
+    pip install -r requirements.txt
+    ```
 
 ## Contribuir / Siguientes pasos sugeridos
 - Añadir tests unitarios para rutas críticas y para la generación de PDFs.
 - Asegurar manejo de errores más amigable en frontend (banners en vez de alertas).
 - Añadir autenticación si piensas exponer la app a red pública.
-
----
-Si quieres que deje un `requirements.txt` con las dependencias detectadas del proyecto, o que añada instrucciones más detalladas para la conexión a SQL Server (ejemplos de cadena de conexión), dímelo y lo agrego ahora.

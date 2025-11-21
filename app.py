@@ -35,6 +35,8 @@ import json
 
 import matplotlib.pyplot as plt
 
+from Prueba_Conexion import get_connection
+
 fecha_str = datetime.now().strftime("%d%m%y_%H%M%S")
 
 def cargar_modelo(ruta_modelo: str):
@@ -429,15 +431,50 @@ def construir_app():
 
     @app.route('/predecir', methods=['POST'])
     def predecir():
-        """Procesa el formulario y muestra el resultado de la predicción."""
+        """Procesa el formulario, obtiene predicción, calcula confianza y guarda en SQL Server."""
         datos = request.form.to_dict()
         confianza = None
+
         try:
+            # Procesar entrada y obtener predicción
             df = procesar_entrada(datos)
             resultado = realizar_prediccion(df)
             confianza = obtener_confianza(df)
+
+            # === GUARDAR EN SQL SERVER ===
+            conn = get_connection()
+            cursor = conn.cursor()
+
+            cursor.execute("""
+                INSERT INTO Reportes (
+                    profundidad_mm, longitud_cm, temp_ambiente_C,
+                    humedad_relativa, patron_fisura, columna_ensanchada,
+                    edad_concreto_horas, exposicion_viento_kmh,
+                    resultado, confianza
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                float(datos["profundidad_mm"]),
+                float(datos["longitud_cm"]),
+                float(datos["temp_ambiente_C"]),
+                float(datos["humedad_relativa"]),
+                str(datos["patron_fisura"]),
+                int(datos["columna_ensanchada"]),
+                float(datos["edad_concreto_horas"]),
+                float(datos["exposicion_viento_kmh"]),
+                str(resultado),
+                float(confianza)  # 🔥 ESTA LÍNEA ES LA IMPORTANTE
+            ))
+
+
+            conn.commit()
+            cursor.close()
+            conn.close()
+
         except Exception as e:
-            resultado = f"Error al procesar la predicción: {e}"
+            return f"Error guardando en SQL Server o procesando predicción: {e}"
+
+        # Render normal si todo salió bien
         return render_template(
             'index.html',
             categorias=categorias_patron,
@@ -445,7 +482,6 @@ def construir_app():
             confianza=confianza,
             valores=datos
         )
-
 
     @app.route('/api/prediccion', methods=['POST'])
     def api_prediccion():

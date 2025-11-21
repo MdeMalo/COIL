@@ -29,9 +29,11 @@ from reportlab.lib.utils import ImageReader
 
 from pathlib import Path
 import pickle
-from flask import Flask, render_template, request, jsonify, send_file
+from flask import Flask, render_template, request, jsonify, send_file, redirect, url_for, make_response
 import pandas as pd
 import json
+import base64
+import math
 
 import matplotlib.pyplot as plt
 
@@ -432,11 +434,51 @@ def construir_app():
     @app.route('/historial', methods=['GET'])
     def historial():
         """Muestra una tabla HTML con todos los registros guardados en SQL Server."""
+        # Leer filtros desde query string
+        tipo = request.args.get('tipo', 'todos')  # 'helada', 'compresion', 'todos'
+        fecha_desde = request.args.get('fecha_desde')
+        fecha_hasta = request.args.get('fecha_hasta')
+        try:
+            page = int(request.args.get('page', 1))
+        except Exception:
+            page = 1
+        try:
+            per_page = int(request.args.get('per_page', 20))
+        except Exception:
+            per_page = 20
+
         try:
             conn = get_connection()
             cursor = conn.cursor()
 
-            cursor.execute("""
+            where_clauses = []
+            params = []
+
+            if tipo and tipo != 'todos':
+                if tipo == 'helada':
+                    where_clauses.append("resultado LIKE ?")
+                    params.append('%HELADA%')
+                elif tipo == 'compresion':
+                    where_clauses.append("resultado LIKE ?")
+                    params.append('%COMPRES%')
+
+            if fecha_desde:
+                where_clauses.append("fecha_generacion >= ?")
+                params.append(fecha_desde)
+            if fecha_hasta:
+                where_clauses.append("fecha_generacion <= ?")
+                params.append(fecha_hasta)
+
+            where_sql = ('WHERE ' + ' AND '.join(where_clauses)) if where_clauses else ''
+
+            # Primero obtener el total para paginación
+            count_sql = f"SELECT COUNT(*) FROM Reportes {where_sql}"
+            cursor.execute(count_sql, params)
+            total_count = cursor.fetchone()[0] or 0
+
+            # Luego obtener la página específica usando OFFSET/FETCH
+            offset = (page - 1) * per_page
+            sql = f"""
                 SELECT 
                     id, fecha_generacion, 
                     profundidad_mm, longitud_cm, temp_ambiente_C,
@@ -444,8 +486,12 @@ def construir_app():
                     edad_concreto_horas, exposicion_viento_kmh,
                     resultado, confianza, ruta_pdf
                 FROM Reportes
+                {where_sql}
                 ORDER BY id DESC
-            """)
+                OFFSET ? ROWS FETCH NEXT ? ROWS ONLY
+            """
+
+            cursor.execute(sql, params + [offset, per_page])
 
             registros = cursor.fetchall()
             columnas = [column[0] for column in cursor.description]
@@ -456,7 +502,176 @@ def construir_app():
         except Exception as e:
             return f"Error al obtener historial: {e}"
 
-        return render_template("historial.html", columnas=columnas, registros=registros)
+        total_pages = math.ceil(total_count / per_page) if per_page else 1
+        filtros = {'tipo': tipo, 'fecha_desde': fecha_desde, 'fecha_hasta': fecha_hasta, 'per_page': per_page}
+        return render_template("historial.html", columnas=columnas, registros=registros, filtros=filtros, page=page, per_page=per_page, total_pages=total_pages, total_count=total_count)
+
+    @app.route('/export_excel')
+    def export_excel():
+        """Exporta los registros filtrados a un archivo Excel y lo descarga."""
+        tipo = request.args.get('tipo', 'todos')
+        fecha_desde = request.args.get('fecha_desde')
+        fecha_hasta = request.args.get('fecha_hasta')
+
+        try:
+            conn = get_connection()
+            cursor = conn.cursor()
+
+            where_clauses = []
+            params = []
+            if tipo and tipo != 'todos':
+                if tipo == 'helada':
+                    where_clauses.append("resultado LIKE ?")
+                    params.append('%HELADA%')
+                elif tipo == 'compresion':
+                    where_clauses.append("resultado LIKE ?")
+                    params.append('%COMPRES%')
+            if fecha_desde:
+                where_clauses.append("fecha_generacion >= ?")
+                params.append(fecha_desde)
+            if fecha_hasta:
+                where_clauses.append("fecha_generacion <= ?")
+                params.append(fecha_hasta)
+
+            where_sql = ('WHERE ' + ' AND '.join(where_clauses)) if where_clauses else ''
+
+            sql = f"""
+                SELECT 
+                    id, fecha_generacion, 
+                    profundidad_mm, longitud_cm, temp_ambiente_C,
+                    humedad_relativa, patron_fisura, columna_ensanchada,
+                    edad_concreto_horas, exposicion_viento_kmh,
+                    resultado, confianza, ruta_pdf
+                FROM Reportes
+                {where_sql}
+                ORDER BY id DESC
+            """
+
+            cursor.execute(sql, params)
+            rows = cursor.fetchall()
+            cols = [c[0] for c in cursor.description]
+            df = pd.DataFrame.from_records(rows, columns=cols)
+
+            # Generar Excel en memoria
+            out = io.BytesIO()
+            with pd.ExcelWriter(out, engine='xlsxwriter') as writer:
+                df.to_excel(writer, index=False, sheet_name='Reportes')
+            out.seek(0)
+
+            cursor.close()
+            conn.close()
+
+            filename = f"reportes_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+            return send_file(out, as_attachment=True, download_name=filename, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+
+        except Exception as e:
+            return f"Error generando Excel: {e}", 500
+
+    @app.route('/borrar/<int:reporte_id>', methods=['POST', 'GET'])
+    def borrar_reporte(reporte_id):
+        """Borra un registro por su ID y redirige al historial."""
+        try:
+            conn = get_connection()
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM Reportes WHERE id = ?", (reporte_id,))
+            conn.commit()
+            cursor.close()
+            conn.close()
+        except Exception as e:
+            return f"Error borrando registro: {e}", 500
+
+        return redirect(url_for('historial'))
+
+    @app.route('/dashboard')
+    def dashboard():
+        """Muestra la plantilla del dashboard. Los datos para las gráficas
+        se obtienen via AJAX desde `/api/dashboard_data` y se renderizan
+        con Chart.js en el cliente (gráficas interactivas)."""
+        return render_template('dashboard.html')
+
+
+    @app.route('/api/dashboard_data')
+    def api_dashboard_data():
+        """Devuelve JSON con los datos necesarios para construir el dashboard:
+        - conteos: lista de {resultado, cnt}
+        - promedios: dict de promedios por parámetro
+        - serie: lista de {fecha, cnt}
+        """
+        try:
+            conn = get_connection()
+            cursor = conn.cursor()
+
+            # Conteo por tipo mapeado (normaliza variaciones de texto/emoji en 'resultado')
+            cursor.execute("""
+                SELECT tipo, COUNT(*) as cnt FROM (
+                    SELECT CASE
+                        WHEN resultado LIKE '%HELADA%' OR resultado LIKE '%helada%' OR resultado LIKE '%PLAST%' OR resultado LIKE '%plast%' THEN 'Helada temprana'
+                        WHEN resultado LIKE '%COMPRES%' OR resultado LIKE '%compres%' OR resultado LIKE '%ESTRUCT%' OR resultado LIKE '%estruct%' THEN 'Compresión simple'
+                        ELSE 'Otro'
+                    END as tipo
+                    FROM Reportes
+                ) t
+                GROUP BY tipo
+            """)
+            conteos_raw = cursor.fetchall()
+            conteos = [{'resultado': r[0], 'cnt': int(r[1])} for r in conteos_raw]
+
+            # Promedios de parámetros
+            cursor.execute("SELECT AVG(profundidad_mm), AVG(longitud_cm), AVG(temp_ambiente_C), AVG(humedad_relativa), AVG(edad_concreto_horas), AVG(exposicion_viento_kmh) FROM Reportes")
+            proms = cursor.fetchone()
+            promedios = {
+                'profundidad_mm': float(proms[0]) if proms[0] is not None else None,
+                'longitud_cm': float(proms[1]) if proms[1] is not None else None,
+                'temp_ambiente_C': float(proms[2]) if proms[2] is not None else None,
+                'humedad_relativa': float(proms[3]) if proms[3] is not None else None,
+                'edad_concreto_horas': float(proms[4]) if proms[4] is not None else None,
+                'exposicion_viento_kmh': float(proms[5]) if proms[5] is not None else None,
+            }
+
+            # Historial temporal: conteo por fecha (fecha_generacion date)
+            cursor.execute("SELECT CONVERT(varchar(10), fecha_generacion, 23) as fdate, COUNT(*) FROM Reportes GROUP BY CONVERT(varchar(10), fecha_generacion, 23) ORDER BY fdate")
+            serie_raw = cursor.fetchall()
+            serie = [{'fecha': str(r[0]), 'cnt': int(r[1])} for r in serie_raw]
+
+            cursor.close()
+            conn.close()
+
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
+
+        return jsonify({'conteos': conteos, 'promedios': promedios, 'serie': serie})
+    
+    @app.route('/reporte/<int:reporte_id>')
+    def ver_reporte(reporte_id):
+        try:
+            conn = get_connection()
+            cursor = conn.cursor()
+
+            cursor.execute("""
+                SELECT 
+                    id, fecha_generacion,
+                    profundidad_mm, longitud_cm, temp_ambiente_C,
+                    humedad_relativa, patron_fisura, columna_ensanchada,
+                    edad_concreto_horas, exposicion_viento_kmh,
+                    resultado, confianza, ruta_pdf
+                FROM Reportes
+                WHERE id = ?
+            """, (reporte_id,))
+
+            registro = cursor.fetchone()
+            columnas = [col[0] for col in cursor.description]
+
+            cursor.close()
+            conn.close()
+
+            if not registro:
+                return f"Reporte con ID {reporte_id} no encontrado."
+
+        except Exception as e:
+            return f"Error al obtener el reporte individual: {e}"
+
+        return render_template("reporte_detalle.html", columnas=columnas, registro=registro)
+
 
     @app.route('/predecir', methods=['POST'])
     def predecir():

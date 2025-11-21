@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Reporte {{ registro[0] }}</title>
+    <style>
+        body { font-family: Arial; padding: 20px; }
+        .card {
+            padding: 20px; 
+            border: 1px solid #ccc; 
+            background: #fff;
+            border-radius: 8px;
+            width: 600px;
+            margin: auto;
+        }
+        .btn {
+            display: inline-block;
+            padding: 8px 14px;
+            background: #007BFF;
+            color: #fff;
+            text-decoration: none;
+            border-radius: 4px;
+            margin-top: 15px;
+        }
+    </style>
+</head>
+<body>
+
+    <a class="btn" href="/historial">← Volver al historial</a>
+    <form method="post" action="{{ url_for('borrar_reporte', reporte_id=registro[0]) }}" style="display:inline; margin-left:10px;">
+        <button class="btn" type="submit" onclick="return confirm('Borrar reporte ID {{ registro[0] }}?');">Borrar</button>
+    </form>
+
+    <h2>Reporte ID {{ registro[0] }}</h2>
+
+    <div class="card">
+        {% for i in range(columnas|length) %}
+            <p><b>{{ columnas[i] }}:</b> {{ registro[i] }}</p>
+        {% endfor %}
+
+        {% if registro[12] %}
+            <a class="btn" href="{{ registro[12] }}" target="_blank">📄 Abrir PDF</a>
+        {% endif %}
+    </div>
+
+</body>
+</html>
